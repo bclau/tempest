@@ -461,6 +461,7 @@ class OfficialClientManager(manager.Manager):
     HEATCLIENT_VERSION = '1'
     IRONICCLIENT_VERSION = '1'
     SAHARACLIENT_VERSION = '1.1'
+    TELEMETRYCLIENT_VERSION = '2'
 
     def __init__(self, username, password, tenant_name):
         # FIXME(andreaf) Auth provider for client_type 'official' is
@@ -491,6 +492,10 @@ class OfficialClientManager(manager.Manager):
             password,
             tenant_name)
         self.data_processing_client = self._get_data_processing_client(
+            username,
+            password,
+            tenant_name)
+        self.telemetry_client = self._get_telemetry_client(
             username,
             password,
             tenant_name)
@@ -726,5 +731,34 @@ class OfficialClientManager(manager.Manager):
                                             endpoint_type=endpoint_type,
                                             service_type=catalog_type,
                                             auth_url=auth_url)
+
+        return client
+
+    def _get_telemetry_client(self, username, password, tenant_name):
+        if not CONF.service_available.ceilometer:
+            # Ceilometer isn't available
+            return None
+
+        import ceilometerclient.client as telemetry_client
+        if not username:
+            username = CONF.identity.admin_username
+        if not password:
+            password = CONF.identity.admin_password
+        if not tenant_name:
+            tenant_name = CONF.identity.tenant_name
+
+        self._validate_credentials(username, password, tenant_name)
+
+        endpoint_type = CONF.telemetry.endpoint_type
+        catalog_type = CONF.telemetry.catalog_type
+        auth_url = CONF.identity.uri
+
+        client = telemetry_client.get_client(self.TELEMETRYCLIENT_VERSION,
+                                             os_username=username,
+                                             os_password=password,
+                                             os_tenant_name=tenant_name,
+                                             os_endpoint_type=endpoint_type,
+                                             os_service_type=catalog_type,
+                                             os_auth_url=auth_url)
 
         return client

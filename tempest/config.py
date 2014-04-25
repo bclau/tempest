@@ -606,6 +606,9 @@ TelemetryGroup = [
                choices=['public', 'admin', 'internal',
                         'publicURL', 'adminURL', 'internalURL'],
                help="The endpoint type to use for the telemetry service."),
+    cfg.IntOpt('metrics_polling_interval', default=60,
+               help=("The number of seconds the compute agent will "
+                      "wait between polling for VM metrics.")),
 ]
 
 

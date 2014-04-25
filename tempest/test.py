@@ -107,6 +107,7 @@ def services(*args, **kwargs):
         'identity': True,
         'object_storage': CONF.service_available.swift,
         'dashboard': CONF.service_available.horizon,
+        'metering': CONF.service_available.ceilometer,
     }
 
     def decorator(f):
