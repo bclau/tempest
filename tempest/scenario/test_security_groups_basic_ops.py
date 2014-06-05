@@ -26,65 +26,7 @@ CONF = config.CONF
 LOG = logging.getLogger(__name__)
 
 
-class TestSecurityGroupsBasicOps(manager.NetworkScenarioTest):
-
-    """
-    This test suite assumes that Nova has been configured to
-    boot VM's with Neutron-managed networking, and attempts to
-    verify cross tenant connectivity as follows
-
-    ssh:
-        in order to overcome "ip namespace", each tenant has an "access point"
-        VM with floating-ip open to incoming ssh connection allowing network
-        commands (ping/ssh) to be executed from within the
-        tenant-network-namespace
-        Tempest host performs key-based authentication to the ssh server via
-        floating IP address
-
-    connectivity test is done by pinging destination server via source server
-    ssh connection.
-    success - ping returns
-    failure - ping_timeout reached
-
-    setup:
-        for primary tenant:
-            1. create a network&subnet
-            2. create a router (if public router isn't configured)
-            3. connect tenant network to public network via router
-            4. create an access point:
-                a. a security group open to incoming ssh connection
-                b. a VM with a floating ip
-            5. create a general empty security group (same as "default", but
-            without rules allowing in-tenant traffic)
-
-    tests:
-        1. _verify_network_details
-        2. _verify_mac_addr: for each access point verify that
-        (subnet, fix_ip, mac address) are as defined in the port list
-        3. _test_in_tenant_block: test that in-tenant traffic is disabled
-        without rules allowing it
-        4. _test_in_tenant_allow: test that in-tenant traffic is enabled
-        once an appropriate rule has been created
-        5. _test_cross_tenant_block: test that cross-tenant traffic is disabled
-        without a rule allowing it on destination tenant
-        6. _test_cross_tenant_allow:
-            * test that cross-tenant traffic is enabled once an appropriate
-            rule has been created on destination tenant.
-            * test that reverse traffic is still blocked
-            * test than revesre traffic is enabled once an appropriate rule has
-            been created on source tenant
-
-    assumptions:
-        1. alt_tenant/user existed and is different from primary_tenant/user
-        2. Public network is defined and reachable from the Tempest host
-        3. Public router can either be:
-            * defined, in which case all tenants networks can connect directly
-            to it, and cross tenant check will be done on the private IP of the
-            destination tenant
-            or
-            * not defined (empty string), in which case each tanant will have
-            its own router connected to the public network
-    """
+class TestSecurityGroupsBase(manager.NetworkScenarioTest):
 
     class TenantProperties():
         """
@@ -119,7 +61,7 @@ class TestSecurityGroupsBasicOps(manager.NetworkScenarioTest):
 
     @classmethod
     def check_preconditions(cls):
-        super(TestSecurityGroupsBasicOps, cls).check_preconditions()
+        super(TestSecurityGroupsBase, cls).check_preconditions()
         if (cls.alt_creds is None) or \
                 (cls.tenant_id is cls.alt_creds.tenant_id):
             msg = 'No alt_tenant defined'
@@ -134,7 +76,7 @@ class TestSecurityGroupsBasicOps(manager.NetworkScenarioTest):
 
     @classmethod
     def setUpClass(cls):
-        super(TestSecurityGroupsBasicOps, cls).setUpClass()
+        super(TestSecurityGroupsBase, cls).setUpClass()
         cls.alt_creds = cls.alt_credentials()
         cls.alt_manager = clients.OfficialClientManager(cls.alt_creds)
         # Credentials from the manager are filled with both IDs and Names
@@ -155,7 +97,7 @@ class TestSecurityGroupsBasicOps(manager.NetworkScenarioTest):
         self.cleanup_resource(resource, self.__class__.__name__)
 
     def setUp(self):
-        super(TestSecurityGroupsBasicOps, self).setUp()
+        super(TestSecurityGroupsBase, self).setUp()
         self._deploy_tenant(self.primary_tenant)
         self._verify_network_details(self.primary_tenant)
         self._verify_mac_addr(self.primary_tenant)
@@ -360,6 +302,89 @@ class TestSecurityGroupsBasicOps(manager.NetworkScenarioTest):
         for server in tenant.servers:
             self._check_connectivity(access_point=access_point_ssh,
                                      ip=self._get_server_ip(server))
+
+    def _verify_mac_addr(self, tenant):
+        """
+        verify that VM (tenant's access point) has the same ip,mac as listed in
+        port list
+        """
+        access_point_ssh = self._connect_to_access_point(tenant)
+        mac_addr = access_point_ssh.get_mac_address()
+        mac_addr = mac_addr.strip().lower()
+        # Get the fixed_ips and mac_address fields of all ports. Select
+        # only those two columns to reduce the size of the response.
+        port_list = self.network_client.list_ports(
+            fields=['fixed_ips', 'mac_address'])['ports']
+        port_detail_list = [
+            (port['fixed_ips'][0]['subnet_id'],
+             port['fixed_ips'][0]['ip_address'],
+             port['mac_address'].lower())
+            for port in port_list if port['fixed_ips']
+        ]
+        server_ip = self._get_server_ip(tenant.access_point)
+        subnet_id = tenant.subnet.id
+        self.assertIn((subnet_id, server_ip, mac_addr), port_detail_list)
+
+
+class TestSecurityGroupsBasicOps(TestSecurityGroupsBase):
+
+    """
+    This test suite assumes that Nova has been configured to
+    boot VM's with Neutron-managed networking, and attempts to
+    verify cross tenant connectivity as follows
+
+    ssh:
+        in order to overcome "ip namespace", each tenant has an "access point"
+        VM with floating-ip open to incoming ssh connection allowing network
+        commands (ping/ssh) to be executed from within the
+        tenant-network-namespace
+        Tempest host performs key-based authentication to the ssh server via
+        floating IP address
+
+    connectivity test is done by pinging destination server via source server
+    ssh connection.
+    success - ping returns
+    failure - ping_timeout reached
+
+    setup:
+        for primary tenant:
+            1. create a network&subnet
+            2. create a router (if public router isn't configured)
+            3. connect tenant network to public network via router
+            4. create an access point:
+                a. a security group open to incoming ssh connection
+                b. a VM with a floating ip
+            5. create a general empty security group (same as "default", but
+            without rules allowing in-tenant traffic)
+
+    tests:
+        1. _verify_network_details
+        2. _verify_mac_addr: for each access point verify that
+        (subnet, fix_ip, mac address) are as defined in the port list
+        3. _test_in_tenant_block: test that in-tenant traffic is disabled
+        without rules allowing it
+        4. _test_in_tenant_allow: test that in-tenant traffic is enabled
+        once an appropriate rule has been created
+        5. _test_cross_tenant_block: test that cross-tenant traffic is disabled
+        without a rule allowing it on destination tenant
+        6. _test_cross_tenant_allow:
+            * test that cross-tenant traffic is enabled once an appropriate
+            rule has been created on destination tenant.
+            * test that reverse traffic is still blocked
+            * test than revesre traffic is enabled once an appropriate rule has
+            been created on source tenant
+
+    assumptions:
+        1. alt_tenant/user existed and is different from primary_tenant/user
+        2. Public network is defined and reachable from the Tempest host
+        3. Public router can either be:
+            * defined, in which case all tenants networks can connect directly
+            to it, and cross tenant check will be done on the private IP of the
+            destination tenant
+            or
+            * not defined (empty string), in which case each tanant will have
+            its own router connected to the public network
+    """
 
     def _test_cross_tenant_block(self, source_tenant, dest_tenant):
         """
