@@ -948,6 +948,9 @@
 # ssh username for the image file (string value)
 #ssh_user=cirros
 
+# Volume guest device path (string value)
+#attach_volume_dev_path=/dev/vdb
+
 # specifies how many resources to request at once. Used for
 # large operations testing. (integer value)
 #large_ops_number=0

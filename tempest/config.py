@@ -870,6 +870,9 @@ ScenarioGroup = [
     cfg.StrOpt('ssh_user',
                default='cirros',
                help='ssh username for the image file'),
+    cfg.StrOpt('attach_volume_dev_path',
+               default='/dev/vdb',
+               help='Volume guest device path'),
     cfg.IntOpt(
         'large_ops_number',
         default=0,

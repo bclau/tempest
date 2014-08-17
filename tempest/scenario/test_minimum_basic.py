@@ -13,6 +13,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import posixpath
+
 from tempest.common import debug
 from tempest import config
 from tempest.openstack.common import log as logging
@@ -75,7 +77,7 @@ class TestMinimumBasicScenario(manager.OfficialClientTest):
         attach_volume_client = self.compute_client.volumes.create_server_volume
         volume = attach_volume_client(self.server.id,
                                       self.volume.id,
-                                      '/dev/vdb')
+                                      CONF.scenario.attach_volume_dev_path)
         self.assertEqual(self.volume.id, volume.id)
         self.wait_for_volume_status('in-use')
 
@@ -102,8 +104,12 @@ class TestMinimumBasicScenario(manager.OfficialClientTest):
             raise
 
     def check_partitions(self):
+        # Use posixpath in place of os.path to make sure the proper
+        # separator is used on non POSIX OSs
+        partition_name = posixpath.basename(
+            CONF.scenario.attach_volume_dev_path)
         partitions = self.linux_client.get_partitions()
-        self.assertEqual(1, partitions.count('vdb'))
+        self.assertEqual(1, partitions.count(partition_name))
 
     def nova_volume_detach(self):
         detach_volume_client = self.compute_client.volumes.delete_server_volume
