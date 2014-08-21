@@ -17,6 +17,7 @@ from tempest import clients
 from tempest.common import debug
 from tempest.common.utils import data_utils
 from tempest import config
+from tempest import exceptions
 from tempest.openstack.common import log as logging
 from tempest.scenario import manager
 from tempest import test
@@ -105,6 +106,7 @@ class TestSecurityGroupsBasicOps(manager.NetworkScenarioTest):
             self.network = None
             self.subnet = None
             self.router = None
+            self.allow_rule = None
             self.security_groups = {}
             self.servers = list()
 
@@ -179,13 +181,21 @@ class TestSecurityGroupsBasicOps(manager.NetworkScenarioTest):
             tenant_id=tenant.creds.tenant_id
         )
         tenant.security_groups.update(access=access_sg, default=def_sg)
-        ssh_rule = dict(
-            protocol='tcp',
-            port_range_min=22,
-            port_range_max=22,
-            direction='ingress',
+        self._create_sg_allow_rule(tenant)
+
+    def _create_sg_allow_rule(self, tenant, sg_name='access'):
+        secgroup = tenant.security_groups[sg_name]
+        allow_rule = ruleset = dict(
+            protocol='icmp',
+            direction='ingress'
         )
-        self._create_security_group_rule(secgroup=access_sg, **ssh_rule)
+        sg_allow_rule = self._create_security_group_rule(secgroup=secgroup,
+                                                         **allow_rule)
+        tenant.allow_rule = sg_allow_rule
+
+    def _delete_sg_allow_rule(self, tenant):
+        if tenant.allow_rule:
+            tenant.allow_rule.delete()
 
     def _verify_network_details(self, tenant):
         # Checks that we see the newly created network/subnet/router via
@@ -366,6 +376,7 @@ class TestSecurityGroupsBasicOps(manager.NetworkScenarioTest):
         if public router isn't defined, then dest_tenant access is via
         floating-ip
         """
+        self._delete_sg_allow_rule(source_tenant)
         access_point_ssh = self._connect_to_access_point(source_tenant)
         ip = self._get_server_ip(dest_tenant.access_point,
                                  floating=self.floating_ip_access)
@@ -377,14 +388,8 @@ class TestSecurityGroupsBasicOps(manager.NetworkScenarioTest):
         check for each direction:
         creating rule for tenant incoming traffic enables only 1way traffic
         """
-        ruleset = dict(
-            protocol='icmp',
-            direction='ingress'
-        )
-        self._create_security_group_rule(
-            secgroup=dest_tenant.security_groups['default'],
-            **ruleset
-        )
+        self._create_sg_allow_rule(dest_tenant, 'default')
+
         access_point_ssh = self._connect_to_access_point(source_tenant)
         ip = self._get_server_ip(dest_tenant.access_point,
                                  floating=self.floating_ip_access)
@@ -394,10 +399,7 @@ class TestSecurityGroupsBasicOps(manager.NetworkScenarioTest):
         self._test_cross_tenant_block(dest_tenant, source_tenant)
 
         # allow reverse traffic and check
-        self._create_security_group_rule(
-            secgroup=source_tenant.security_groups['default'],
-            **ruleset
-        )
+        self._create_sg_allow_rule(dest_tenant, 'default')
 
         access_point_ssh_2 = self._connect_to_access_point(dest_tenant)
         ip = self._get_server_ip(source_tenant.access_point,
@@ -438,6 +440,7 @@ class TestSecurityGroupsBasicOps(manager.NetworkScenarioTest):
             # cross tenant check
             source_tenant = self.primary_tenant
             dest_tenant = self.alt_tenant
+            self._delete_sg_allow_rule(dest_tenant)
             self._test_cross_tenant_block(source_tenant, dest_tenant)
             self._test_cross_tenant_allow(source_tenant, dest_tenant)
         except Exception:
@@ -459,3 +462,50 @@ class TestSecurityGroupsBasicOps(manager.NetworkScenarioTest):
             for tenant in self.tenants.values():
                 self._log_console_output(servers=tenant.servers)
             raise
+
+
+class TestSecurityGroupsSSHBasicOps(TestSecurityGroupsBasicOps):
+
+    def _create_sg_allow_rule(self, tenant):
+        access_sg = tenant.security_groups['access']
+        allow_rule = dict(
+            protocol='tcp',
+            port_range_min=22,
+            port_range_max=22,
+            direction='ingress',
+        )
+        sg_allow_rule = self._create_security_group_rule(secgroup=access_sg,
+                                                       **allow_rule)
+        tenant.allow_rule = sg_allow_rule
+
+    def _check_remote_connectivity(self, source, dest, should_succeed=True):
+        """
+        check nc response via source ssh connection
+
+        :param source: RemoteClient: an ssh connection from which to nc
+        :param dest: and IP to nc against
+        :param should_succeed: boolean should nc succeed or not
+        :returns: boolean -- should_succeed == nc succesful
+        :returns: nc is false if nc failed
+        """
+        def ping_remote():
+            try:
+                # there is no -z parameter for nc in cirros
+                #cmd = 'echo 1 | nc -w 2 %s 22 > /dev/null; echo "$?"' % dest
+                cmd = ('curl --max-time 2 %s:22 2> /dev/null > output; '
+                       'cat output' % dest)
+
+                result = source.exec_command(cmd)
+                #if result != "0":
+                if result[:3] != "SSH":
+                    return not should_succeed
+            except exceptions.SSHExecCommandFailed as e:
+                LOG.warn('Failed to ssh IP: %s via a ssh connection from: %s.'
+                         % (dest, source.ssh_client.host))
+                LOG.warn(e)
+                return not should_succeed
+            return should_succeed
+
+        return test.call_until_true(ping_remote,
+                                    CONF.compute.ping_timeout,
+                                    1)
