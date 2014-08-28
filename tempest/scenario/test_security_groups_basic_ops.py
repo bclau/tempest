@@ -328,27 +328,51 @@ class TestSecurityGroupsBasicOps(manager.NetworkScenarioTest):
                                                private_key=private_key)
         return access_point_ssh
 
-    def _check_connectivity(self, access_point, ip, should_succeed=True):
-        if should_succeed:
-            msg = "Timed out waiting for %s to become reachable" % ip
-        else:
-            msg = "%s is reachable" % ip
-        try:
-            self.assertTrue(self._check_remote_connectivity(access_point, ip,
-                                                            should_succeed),
-                            msg)
-        except test.exceptions.SSHTimeout:
-            raise
-        except Exception:
-            debug.log_net_debug()
-            raise
+    def _check_connectivity(self, access_point, ip, **test_dict):
+        """
+        check connectivity from access_point to ip via methods in test_dict,
+        and compare them to their expected results
+
+        :param access_point: from which to check
+        :param ip: against which to check
+        :param test_dict: dict for methods and their expected results:
+            {
+                'icmp': True,
+                'tcp': False
+            }
+            currently supports: icmp, udp, tcp.
+        :raise test.exceptions.SSHTimeout: ssh failure to already been
+            checked connectivity to access_point
+        :raise Exception: Other errors which require network debug
+        """
+        for method, should_succeed in test_dict.iteritems():
+            try:
+                if should_succeed:
+                    msg = ("Timed out waiting for {ip} to become reachable via"
+                           " {method}".format(ip=ip, method=method))
+                else:
+                    msg = "{ip} is reachable via {method}".format(
+                        ip=ip,
+                        method=method
+                    )
+                self.assertTrue(
+                    self._check_remote_connectivity(access_point,
+                                                    ip,
+                                                    should_succeed,
+                                                    method + "_check"),
+                    msg)
+            except test.exceptions.SSHTimeout:
+                raise
+            except Exception:
+                debug.log_net_debug()
+                raise
 
     def _test_in_tenant_block(self, tenant):
         access_point_ssh = self._connect_to_access_point(tenant)
         for server in tenant.servers:
             self._check_connectivity(access_point=access_point_ssh,
                                      ip=self._get_server_ip(server),
-                                     should_succeed=False)
+                                     icmp=False)
 
     def _test_in_tenant_allow(self, tenant):
         ruleset = dict(
@@ -374,7 +398,7 @@ class TestSecurityGroupsBasicOps(manager.NetworkScenarioTest):
         ip = self._get_server_ip(dest_tenant.access_point,
                                  floating=self.floating_ip_access)
         self._check_connectivity(access_point=access_point_ssh, ip=ip,
-                                 should_succeed=False)
+                                 icmp=False)
 
     def _test_cross_tenant_allow(self, source_tenant, dest_tenant):
         """
@@ -392,7 +416,7 @@ class TestSecurityGroupsBasicOps(manager.NetworkScenarioTest):
         access_point_ssh = self._connect_to_access_point(source_tenant)
         ip = self._get_server_ip(dest_tenant.access_point,
                                  floating=self.floating_ip_access)
-        self._check_connectivity(access_point_ssh, ip)
+        self._check_connectivity(access_point_ssh, ip, icmp=True)
 
         # test that reverse traffic is still blocked
         self._test_cross_tenant_block(dest_tenant, source_tenant)
@@ -406,7 +430,7 @@ class TestSecurityGroupsBasicOps(manager.NetworkScenarioTest):
         access_point_ssh_2 = self._connect_to_access_point(dest_tenant)
         ip = self._get_server_ip(source_tenant.access_point,
                                  floating=self.floating_ip_access)
-        self._check_connectivity(access_point_ssh_2, ip)
+        self._check_connectivity(access_point_ssh_2, ip, icmp=True)
 
     def _verify_mac_addr(self, tenant):
         """

@@ -1966,26 +1966,34 @@ class NetworkScenarioTest(OfficialClientTest):
                 debug.log_net_debug()
             raise
 
-    def _check_remote_connectivity(self, source, dest, should_succeed=True):
+    def _check_remote_connectivity(self, source, dest, should_succeed=True,
+                                   method='icmp_check'):
         """
-        check ping server via source ssh connection
+        check server connectivity via ssh from source to dest through method
 
-        :param source: RemoteClient: an ssh connection from which to ping
-        :param dest: and IP to ping against
-        :param should_succeed: boolean should ping succeed or not
-        :returns: boolean -- should_succeed == ping
-        :returns: ping is false if ping failed
+        :param source: RemoteClient: an ssh connection from which to execute
+            check
+        :param dest: IP to check connectivity against
+        :param method: connectivity method to check with
+        :param should_succeed: boolean - should try_connect succeed or not
+        :returns: boolean -- (should_succeed == try_connect)
+            return comparison between the connectivity check result to it's
+            expected result
         """
-        def ping_remote():
+        try_connect = getattr(source, method)
+
+        def connect_remote():
             try:
-                source.ping_host(dest)
+                try_connect(dest)
             except exceptions.SSHExecCommandFailed:
-                LOG.warn('Failed to ping IP: %s via a ssh connection from: %s.'
-                         % (dest, source.ssh_client.host))
+                LOG.warn('Failed to connect IP: {dest} via {method} '
+                         'connection from: {source}'
+                         .format(dest=dest, method=method,
+                                 source=source.ssh_client.host))
                 return not should_succeed
             return should_succeed
 
-        return tempest.test.call_until_true(ping_remote,
+        return tempest.test.call_until_true(connect_remote,
                                             CONF.compute.ping_timeout,
                                             1)
 

@@ -113,3 +113,40 @@ class RemoteClient():
         # Get pid(s) of a process/program
         cmd = "ps -ef | grep %s | grep -v 'grep' | awk {'print $1'}" % pr_name
         return self.exec_command(cmd).split('\n')
+
+    def traceroute_host(self, host):
+        """
+        Check connectivity via traceroute. Verify that the last packet
+        arrives from the destination host.
+        Limit to 15 hops in order to avoid ssh timeout
+        """
+        cmd = "traceroute -m15 {host} | tail -n1 | grep {host}".format(
+            host=host)
+        return self.exec_command(cmd)
+
+    def nc_host(self, host, port=22):
+        """
+        Check connectivity to tcp port at host via nc
+
+        @port: by default cirrOS opens port 22 for SSH
+        """
+        cmd = "nc -w 1 {host} {port} < /dev/null".format(host=host, port=port)
+        return self.exec_command(cmd)
+
+    def icmp_check(self, host):
+        """
+        Wrapper for icmp connectivity checks
+        """
+        return self.ping_host(host)
+
+    def udp_check(self, host):
+        """
+        Wrapper for udp connectivity checks
+        """
+        return self.traceroute_host(host)
+
+    def tcp_check(self, host):
+        """
+        Wrapper for tcp connectivity checks
+        """
+        return self.nc_host(host)
