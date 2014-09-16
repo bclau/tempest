@@ -719,6 +719,17 @@
 #test_generator=tempest.common.generator.negative_generator.NegativeTestGenerator
 
 
+[security_group]
+
+#
+# Options defined in tempest.config
+#
+
+# The list of protocols to test security group rules against.
+# The Security Group tests will run for each protocol specified.
+#security_group_protocols=icmp,tcp
+
+
 [network]
 
 #

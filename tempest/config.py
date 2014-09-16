@@ -1011,6 +1011,17 @@ NegativeGroup = [
                help="Test generator class for all negative tests"),
 ]
 
+security_group = cfg.OptGroup(name='security_group', title=("Security Group "
+                                                            "Test Options"))
+
+SecurityGroup = [
+    cfg.ListOpt('protocols',
+                default=['icmp'],
+                help='A list of protocols to test security groups rules '
+                     'against. The Security Group tests will run for each '
+                     'protocol specified.'),
+]
+
 
 def register_opts():
     register_opt_group(cfg.CONF, auth_group, AuthGroup)
@@ -1049,6 +1060,7 @@ def register_opts():
     register_opt_group(cfg.CONF, input_scenario_group, InputScenarioGroup)
     register_opt_group(cfg.CONF, cli_group, CLIGroup)
     register_opt_group(cfg.CONF, negative_group, NegativeGroup)
+    register_opt_group(cfg.CONF, security_group, SecurityGroup)
 
 
 # this should never be called outside of this class

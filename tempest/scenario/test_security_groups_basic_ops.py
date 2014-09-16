@@ -389,7 +389,7 @@ class TestSecurityGroupsBasicOps(manager.NetworkScenarioTest):
             self._check_connectivity(access_point=access_point_ssh,
                                      ip=self._get_server_ip(server))
 
-    def _test_cross_tenant_block(self, source_tenant, dest_tenant):
+    def _test_cross_tenant_block(self, source_tenant, dest_tenant, protocol):
         """
         if public router isn't defined, then dest_tenant access is via
         floating-ip
@@ -397,18 +397,16 @@ class TestSecurityGroupsBasicOps(manager.NetworkScenarioTest):
         access_point_ssh = self._connect_to_access_point(source_tenant)
         ip = self._get_server_ip(dest_tenant.access_point,
                                  floating=self.floating_ip_access)
+        protocol_map = {protocol: False}
         self._check_connectivity(access_point=access_point_ssh, ip=ip,
-                                 icmp=False)
+                                 **protocol_map)
 
-    def _test_cross_tenant_allow(self, source_tenant, dest_tenant):
+    def _test_cross_tenant_allow(self, source_tenant, dest_tenant, ruleset):
         """
         check for each direction:
         creating rule for tenant incoming traffic enables only 1way traffic
         """
-        ruleset = dict(
-            protocol='icmp',
-            direction='ingress'
-        )
+        protocol_map = {ruleset['protocol']: False}
         self._create_security_group_rule(
             secgroup=dest_tenant.security_groups['default'],
             **ruleset
@@ -416,7 +414,7 @@ class TestSecurityGroupsBasicOps(manager.NetworkScenarioTest):
         access_point_ssh = self._connect_to_access_point(source_tenant)
         ip = self._get_server_ip(dest_tenant.access_point,
                                  floating=self.floating_ip_access)
-        self._check_connectivity(access_point_ssh, ip, icmp=True)
+        self._check_connectivity(access_point_ssh, ip, **protocol_map)
 
         # test that reverse traffic is still blocked
         self._test_cross_tenant_block(dest_tenant, source_tenant)
@@ -430,7 +428,7 @@ class TestSecurityGroupsBasicOps(manager.NetworkScenarioTest):
         access_point_ssh_2 = self._connect_to_access_point(dest_tenant)
         ip = self._get_server_ip(source_tenant.access_point,
                                  floating=self.floating_ip_access)
-        self._check_connectivity(access_point_ssh_2, ip, icmp=True)
+        self._check_connectivity(access_point_ssh_2, ip, **protocol_map)
 
     def _verify_mac_addr(self, tenant):
         """
@@ -454,6 +452,17 @@ class TestSecurityGroupsBasicOps(manager.NetworkScenarioTest):
         subnet_id = tenant.subnet.id
         self.assertIn((subnet_id, server_ip, mac_addr), port_detail_list)
 
+    def _create_protocol_ruleset(self, protocol, port=80):
+        if protocol == 'icmp':
+            ruleset = dict(protocol='icmp',
+                           direction='ingress')
+        else:
+            ruleset = dict(protocol=protocol,
+                           port_range_min=port,
+                           port_range_max=port,
+                           direction='ingress')
+        return ruleset
+
     @test.attr(type='smoke')
     @test.services('compute', 'network')
     def test_cross_tenant_traffic(self):
@@ -466,8 +475,15 @@ class TestSecurityGroupsBasicOps(manager.NetworkScenarioTest):
             # cross tenant check
             source_tenant = self.primary_tenant
             dest_tenant = self.alt_tenant
-            self._test_cross_tenant_block(source_tenant, dest_tenant)
-            self._test_cross_tenant_allow(source_tenant, dest_tenant)
+
+            for protocol in CONF.security_group.protocols:
+                LOG.debug("Testing cross tenant traffic for %s protocol",
+                          protocol)
+                ruleset = self._create_protocol_ruleset(protocol)
+                self._test_cross_tenant_block(source_tenant, dest_tenant,
+                                              protocol)
+                self._test_cross_tenant_allow(source_tenant, dest_tenant,
+                                              ruleset)
         except Exception:
             for tenant in self.tenants.values():
                 self._log_console_output(servers=tenant.servers)
