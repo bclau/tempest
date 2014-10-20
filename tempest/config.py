@@ -1028,6 +1028,16 @@ NegativeGroup = [
                help="Test generator class for all negative tests"),
 ]
 
+failover_group = cfg.OptGroup(name='failover',
+                              title='Failover Configuration Options')
+
+FailoverGroup = [
+    cfg.StrOpt('failover_node',
+               default='WIN-HYPERV-R2',
+               help=('The node where the server will be deployed to and which '
+                     'will be reset to test the failover feature.')),
+]
+
 _opts = [
     (auth_group, AuthGroup),
     (compute_group, ComputeGroup),
@@ -1057,7 +1067,8 @@ _opts = [
     (baremetal_group, BaremetalGroup),
     (input_scenario_group, InputScenarioGroup),
     (cli_group, CLIGroup),
-    (negative_group, NegativeGroup)
+    (negative_group, NegativeGroup),
+    (failover_group, FailoverGroup)
 ]
 
 
