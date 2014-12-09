@@ -1046,6 +1046,10 @@
 # value)
 #too_slow_to_test = true
 
+# The number of seconds the compute agent will wait between polling
+# for VM metrics.
+#metrics_polling_interval = 60
+
 
 [volume]
 

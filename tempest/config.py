@@ -726,7 +726,10 @@ TelemetryGroup = [
     cfg.BoolOpt('too_slow_to_test',
                 default=True,
                 help="This variable is used as flag to enable "
-                     "notification tests")
+                     "notification tests"),
+    cfg.IntOpt('metrics_polling_interval', default=60,
+               help=("The number of seconds the compute agent will "
+                      "wait between polling for VM metrics.")),
 ]
 
 
